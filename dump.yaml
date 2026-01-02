@@ -1,0 +1,13 @@
+# Dumpster configuration
+output: sources.txt
+extensions:
+  - .py
+  - .md
+  - .yaml
+  - .txt
+contents:
+  - tap_jsonl
+  - .github
+  - meltano.yml
+  - pyproject.toml
+  - README.md

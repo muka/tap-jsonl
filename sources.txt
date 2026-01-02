@@ -1,0 +1,500 @@
+# Code repository dump, each file is separated by # ---- file: <name of file>
+
+
+
+
+# ---- file: README.md
+# tap-jsonl
+
+`tap-jsonl` is a Singer tap for Jsonl.
+
+Built with the [Meltano Tap SDK](https://sdk.meltano.com) for Singer Taps.
+
+<!--
+
+Developer TODO: Update the below as needed to correctly describe the install procedure. For instance, if you do not have a PyPI repo, or if you want users to directly install from your git repo, you can modify this step as appropriate.
+
+## Installation
+
+Install from PyPI:
+
+```bash
+uv tool install tap-jsonl
+```
+
+Install from GitHub:
+
+```bash
+uv tool install git+https://github.com/ORG_NAME/tap-jsonl.git@main
+```
+
+-->
+
+## Configuration
+
+### Accepted Config Options
+
+<!--
+Developer TODO: Provide a list of config options accepted by the tap.
+
+This section can be created by copy-pasting the CLI output from:
+
+```
+tap-jsonl --about --format=markdown
+```
+-->
+
+A full list of supported settings and capabilities for this
+tap is available by running:
+
+```bash
+tap-jsonl --about
+```
+
+### Configure using environment variables
+
+This Singer tap will automatically import any environment variables within the working directory's
+`.env` if the `--config=ENV` is provided, such that config values will be considered if a matching
+environment variable is set either in the terminal context or in the `.env` file.
+
+### Source Authentication and Authorization
+
+<!--
+Developer TODO: If your tap requires special access on the source system, or any special authentication requirements, provide those here.
+-->
+
+## Usage
+
+You can easily run `tap-jsonl` by itself or in a pipeline using [Meltano](https://meltano.com/).
+
+### Executing the Tap Directly
+
+```bash
+tap-jsonl --version
+tap-jsonl --help
+tap-jsonl --config CONFIG --discover > ./catalog.json
+```
+
+## Developer Resources
+
+Follow these instructions to contribute to this project.
+
+### Initialize your Development Environment
+
+Prerequisites:
+
+- Python 3.10+
+- [uv](https://docs.astral.sh/uv/)
+
+```bash
+uv sync
+```
+
+### Create and Run Tests
+
+Create tests within the `tests` subfolder and
+then run:
+
+```bash
+uv run pytest
+```
+
+You can also test the `tap-jsonl` CLI interface directly using `uv run`:
+
+```bash
+uv run tap-jsonl --help
+```
+
+### Testing with [Meltano](https://www.meltano.com)
+
+_**Note:** This tap will work in any Singer environment and does not require Meltano.
+Examples here are for convenience and to streamline end-to-end orchestration scenarios._
+
+<!--
+Developer TODO:
+Your project comes with a custom `meltano.yml` project file already created. Open the `meltano.yml` and follow any "TODO" items listed in
+the file.
+-->
+
+Use Meltano to run an EL pipeline:
+
+```bash
+# Install meltano
+uv tool install meltano
+
+# Test invocation
+meltano invoke tap-jsonl --version
+
+# Run a test EL pipeline
+meltano run tap-jsonl target-jsonl
+```
+
+### SDK Dev Guide
+
+See the [dev guide](https://sdk.meltano.com/en/latest/dev_guide.html) for more instructions on how to use the SDK to
+develop your own taps and targets.
+
+
+# ---- file: meltano.yml
+send_anonymous_usage_stats: true
+project_id: "tap-jsonl"
+default_environment: test
+requires_meltano: ">=4.0"
+environments:
+- name: test
+plugins:
+  extractors:
+  - name: "tap-jsonl"
+    namespace: "tap_jsonl"
+    pip_url: -e .
+    capabilities:
+    - state
+    - catalog
+    - discover
+    - about
+    - stream-maps
+    - structured-logging
+
+    # TODO: Declare settings and their types here:
+    settings:
+    - name: username
+      label: Username
+      description: The username to use for authentication
+
+    - name: password
+      kind: password
+      label: Password
+      description: The password to use for authentication
+      sensitive: true
+
+    - name: start_date
+      kind: date_iso8601
+      label: Start Date
+      description: Initial date to start extracting data from
+
+    # TODO: Declare required settings here:
+    settings_group_validation:
+    - [username, password]
+
+    # TODO: Declare default configuration values here:
+    config:
+      start_date: '2010-01-01T00:00:00Z'
+
+  loaders:
+  - name: target-jsonl
+    variant: andyh1203
+    pip_url: target-jsonl
+
+
+# ---- file: pyproject.toml
+[project]
+name = "tap-jsonl"
+version = "0.0.1"
+description = "Singer tap for Jsonl, built with the Meltano Singer SDK."
+readme = "README.md"
+authors = [{ name = "lc", email = "opny721@gmail.com" }]
+keywords = [
+    "ELT",
+    "Jsonl",
+]
+classifiers = [
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
+license = "Apache-2.0"
+license-files = [ "LICENSE" ]
+requires-python = ">=3.10"
+dependencies = [
+    "singer-sdk~=0.53.4",
+    "typing-extensions>=4.5.0; python_version < '3.13'",
+]
+
+[project.optional-dependencies]
+s3 = [
+    "s3fs~=2025.10.0",
+]
+
+[project.scripts]
+# CLI declaration
+tap-jsonl = 'tap_jsonl.tap:TapJsonl.cli'
+
+[dependency-groups]
+dev = [
+    { include-group = "test" },
+]
+test = [
+    "pytest>=9",
+    "pytest-github-actions-annotate-failures>=0.3",
+    "singer-sdk[testing]",
+]
+typing = [
+    "mypy>=1.16.0",
+    "ty>=0.0.1-alpha.16",
+    "types-requests",
+]
+
+[tool.pytest]
+minversion = "9.0"
+addopts = [
+    "--durations=10",
+]
+
+[tool.mypy]
+warn_unused_configs = true
+
+[tool.ruff]
+line-length = 100
+required-version = ">=0.14"
+
+[tool.ruff.lint]
+future-annotations = true
+ignore = [
+    "COM812",  # missing-trailing-comma
+]
+select = ["ALL"]
+
+[tool.ruff.lint.flake8-annotations]
+allow-star-arg-any = true
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[build-system]
+requires = [
+    "hatchling>=1,<2",
+]
+build-backend = "hatchling.build"
+
+# This configuration can be used to customize tox tests as well as other test frameworks like flake8 and mypy
+[tool.tox]
+min_version = "4.22"
+requires = [
+    "tox>=4.22",
+    "tox-uv",
+]
+env_list = [
+    "typing",
+    "py314",
+    "py313",
+    "py312",
+    "py311",
+    "py310",
+]
+
+[tool.tox.env_run_base]
+runner = "uv-venv-lock-runner"
+pass_env = [
+    "GITHUB_*",
+    "TAP_JSONL_*",
+]
+dependency_groups = [ "test" ]
+commands = [ [ "pytest", { replace = "posargs", default = [ "tests" ], extend = true } ] ]
+
+[tool.tox.env.typing]
+dependency_groups = [ "test", "typing" ]
+commands = [
+    [ "mypy", { replace = "posargs", default = [ "tap_jsonl", "tests" ], extend = true } ],
+    [ "ty", "check", { replace = "posargs", default = [ "tap_jsonl", "tests" ], extend = true } ],
+]
+
+
+# ---- file: tap_jsonl/__init__.py
+"""Tap for Jsonl."""
+
+
+# ---- file: tap_jsonl/__main__.py
+"""Jsonl entry point."""
+
+from __future__ import annotations
+
+from tap_jsonl.tap import TapJsonl
+
+TapJsonl.cli()
+
+
+# ---- file: tap_jsonl/client.py
+"""Custom client handling, including JsonlStream base class."""
+
+from __future__ import annotations
+
+import sys
+import typing as t
+
+from singer_sdk.streams import Stream
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
+if t.TYPE_CHECKING:
+    from singer_sdk.helpers.types import Context
+
+
+class JsonlStream(Stream):
+    """Stream class for Jsonl streams."""
+
+    @override
+    def get_records(
+        self,
+        context: Context | None,
+    ) -> t.Iterable[dict]:
+        """Return a generator of record-type dictionary objects.
+
+        The optional `context` argument is used to identify a specific slice of the
+        stream if partitioning is required for the stream. Most implementations do not
+        require partitioning and should ignore the `context` argument.
+
+        Args:
+            context: Stream partition or context dictionary.
+
+        Raises:
+            NotImplementedError: If the implementation is TODO
+        """
+        # TODO: Write logic to extract data from the upstream source.
+        # records = mysource.getall()  # noqa: ERA001
+        # for record in records:
+        #     yield record.to_dict()  # noqa: ERA001
+        errmsg = "The method is not yet implemented (TODO)"
+        raise NotImplementedError(errmsg)
+
+
+# ---- file: tap_jsonl/streams.py
+"""Stream type classes for tap-jsonl."""
+
+from __future__ import annotations
+
+from singer_sdk import typing as th  # JSON Schema typing helpers
+
+from tap_jsonl.client import JsonlStream
+
+# TODO: - Override `UsersStream` and `GroupsStream` with your own stream definition.
+#       - Copy-paste as many times as needed to create multiple stream types.
+
+
+class UsersStream(JsonlStream):
+    """Define custom stream."""
+
+    name = "users"
+    primary_keys = ("id",)
+    replication_key = None
+    # Optionally, you may also use `schema_filepath` in place of `schema`:
+    # schema_filepath = SCHEMAS_DIR / "users.json"  # noqa: ERA001
+    schema = th.PropertiesList(
+        th.Property("name", th.StringType),
+        th.Property(
+            "id",
+            th.StringType,
+            description="The user's system ID",
+        ),
+        th.Property(
+            "age",
+            th.IntegerType,
+            description="The user's age in years",
+        ),
+        th.Property(
+            "email",
+            th.StringType,
+            description="The user's email address",
+        ),
+        th.Property("street", th.StringType),
+        th.Property("city", th.StringType),
+        th.Property(
+            "state",
+            th.StringType,
+            description="State name in ISO 3166-2 format",
+        ),
+        th.Property("zip", th.StringType),
+    ).to_dict()
+
+
+class GroupsStream(JsonlStream):
+    """Define custom stream."""
+
+    name = "groups"
+    primary_keys = ("id",)
+    replication_key = "modified"
+    schema = th.PropertiesList(
+        th.Property("name", th.StringType),
+        th.Property("id", th.StringType),
+        th.Property("modified", th.DateTimeType),
+    ).to_dict()
+
+
+# ---- file: tap_jsonl/tap.py
+"""Jsonl tap class."""
+
+from __future__ import annotations
+
+import sys
+
+from singer_sdk import Tap
+from singer_sdk import typing as th  # JSON schema typing helpers
+
+# TODO: Import your custom stream types here:
+from tap_jsonl import streams
+
+if sys.version_info >= (3, 12):
+    from typing import override
+else:
+    from typing_extensions import override
+
+
+class TapJsonl(Tap):
+    """Singer tap for Jsonl."""
+
+    name = "tap-jsonl"
+
+    # TODO: Update this section with the actual config values you expect:
+    config_jsonschema = th.PropertiesList(
+        th.Property(
+            "auth_token",
+            th.StringType(nullable=False),
+            required=True,
+            secret=True,  # Flag config as protected.
+            title="Auth Token",
+            description="The token to authenticate against the API service",
+        ),
+        th.Property(
+            "project_ids",
+            th.ArrayType(th.StringType(nullable=False), nullable=False),
+            required=True,
+            title="Project IDs",
+            description="Project IDs to replicate",
+        ),
+        th.Property(
+            "start_date",
+            th.DateTimeType(nullable=True),
+            description="The earliest record date to sync",
+        ),
+        th.Property(
+            "api_url",
+            th.StringType(nullable=False),
+            title="API URL",
+            default="https://api.mysample.com",
+            description="The url for the API service",
+        ),
+    ).to_dict()
+
+    @override
+    def discover_streams(self) -> list[streams.JsonlStream]:
+        """Return a list of discovered streams.
+
+        Returns:
+            A list of discovered streams.
+        """
+        return [
+            streams.GroupsStream(self),
+            streams.UsersStream(self),
+        ]
+
+
+if __name__ == "__main__":
+    TapJsonl.cli()
+
