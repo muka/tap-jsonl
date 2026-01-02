@@ -38,6 +38,21 @@ tap-jsonl --about --format=markdown
 ```
 -->
 
+Example config
+
+```yaml
+
+      config:
+        path: ./data/**/*.jsonl
+        stream_name: my_stream
+        primary_keys: ["id"]
+        encoding: utf-8
+        emit_state_every: 500
+
+
+```
+
+
 A full list of supported settings and capabilities for this
 tap is available by running:
 
