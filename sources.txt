@@ -1,12 +1,21 @@
 # Code repository dump, each file is separated by # ---- file: <name of file>
 
-
+# Git metadata
+# working_dir: /home/lspxl/git/github.com/muka/tap-jsonl
+# remote_url: git@github.com-muka:muka/tap-jsonl.git
+# remote_name: origin
+# branch: detached
+# commit: bfa7634abed060f84d5d9020c8d496267e0f79c1
+# commit_time: 2026-01-02T17:45:18+01:00
+# author: muka <luca.capra@gmail.com>
+# message: Merge branch 'main' of github.com-muka:muka/tap-jsonl
+# dirty: yes
 
 
 # ---- file: README.md
 # tap-jsonl
 
-`tap-jsonl` is a Singer tap for Jsonl.
+`tap-jsonl` is a Singer tap for generic JSONL extractions.
 
 Built with the [Meltano Tap SDK](https://sdk.meltano.com) for Singer Taps.
 
@@ -141,49 +150,40 @@ project_id: "tap-jsonl"
 default_environment: test
 requires_meltano: ">=4.0"
 environments:
-- name: test
+  - name: test
 plugins:
   extractors:
-  - name: "tap-jsonl"
-    namespace: "tap_jsonl"
-    pip_url: -e .
-    capabilities:
-    - state
-    - catalog
-    - discover
-    - about
-    - stream-maps
-    - structured-logging
+    - name: "tap-jsonl"
+      namespace: "tap_jsonl"
+      pip_url: -e .
+      capabilities:
+        - state
+        - catalog
+        - discover
+        - about
+        - stream-maps
+        - structured-logging
 
-    # TODO: Declare settings and their types here:
-    settings:
-    - name: username
-      label: Username
-      description: The username to use for authentication
+      settings:
+        - name: path
+        - name: stream_name
+        - name: primary_keys
+        - name: encoding
+        - name: state_strategy
+        - name: emit_state_every
 
-    - name: password
-      kind: password
-      label: Password
-      description: The password to use for authentication
-      sensitive: true
-
-    - name: start_date
-      kind: date_iso8601
-      label: Start Date
-      description: Initial date to start extracting data from
-
-    # TODO: Declare required settings here:
-    settings_group_validation:
-    - [username, password]
-
-    # TODO: Declare default configuration values here:
-    config:
-      start_date: '2010-01-01T00:00:00Z'
+      config:
+        path: /data/**/*.jsonl
+        stream_name: my_stream
+        primary_keys: ["id"]
+        encoding: utf-8
+        state_strategy: line
+        emit_state_every: 500
 
   loaders:
-  - name: target-jsonl
-    variant: andyh1203
-    pip_url: target-jsonl
+    - name: target-jsonl
+      variant: andyh1203
+      pip_url: target-jsonl
 
 
 # ---- file: pyproject.toml
@@ -319,50 +319,75 @@ TapJsonl.cli()
 
 
 # ---- file: tap_jsonl/client.py
-"""Custom client handling, including JsonlStream base class."""
+"""Helpers for streaming JSONL files."""
 
 from __future__ import annotations
 
-import sys
-import typing as t
-
-from singer_sdk.streams import Stream
-
-if sys.version_info >= (3, 12):
-    from typing import override
-else:
-    from typing_extensions import override
-
-if t.TYPE_CHECKING:
-    from singer_sdk.helpers.types import Context
+import json
+from dataclasses import dataclass
+from typing import Any, Dict, Iterable, Iterator, Optional, Tuple
 
 
-class JsonlStream(Stream):
-    """Stream class for Jsonl streams."""
+@dataclass(frozen=True)
+class JsonlReadError:
+    file_path: str
+    line_number: int
+    line: str
+    error: str
 
-    @override
-    def get_records(
-        self,
-        context: Context | None,
-    ) -> t.Iterable[dict]:
-        """Return a generator of record-type dictionary objects.
 
-        The optional `context` argument is used to identify a specific slice of the
-        stream if partitioning is required for the stream. Most implementations do not
-        require partitioning and should ignore the `context` argument.
+def iter_jsonl_file(
+    *,
+    file_path: str,
+    encoding: str = "utf-8",
+    start_line: int = 1,
+    logger=None,
+) -> Iterator[Tuple[Dict[str, Any], int]]:
+    """Yield (record, line_number) from a JSONL file, streaming line-by-line.
 
-        Args:
-            context: Stream partition or context dictionary.
+    Args:
+        file_path: Path to the JSONL file.
+        encoding: File encoding.
+        start_line: 1-based line number to start from (used for resuming state).
+        logger: Optional logger (from Singer SDK) for warnings.
 
-        Raises:
-            NotImplementedError: If the implementation is TODO
-        """
-        # TODO: Write logic to extract data from the upstream source.
-        # records = mysource.getall()  # noqa: ERA001
-        # for record in records:
-        #     yield record.to_dict()  # noqa: ERA001
-        errmsg = "The method is not yet implemented (TODO)"
-        raise NotImplementedError(errmsg)
+    Yields:
+        Tuple(record_dict, current_line_number)
+    """
+    # Use newline='' for predictable line handling across platforms.
+    with open(file_path, "r", encoding=encoding, newline="") as f:
+        for i, raw in enumerate(f, start=1):
+            if i < start_line:
+                continue
+
+            line = raw.strip()
+            if not line:
+                continue
+
+            try:
+                obj = json.loads(line)
+            except Exception as e:  # noqa: BLE001
+                if logger:
+                    logger.warning(
+                        "Skipping invalid JSON at %s:%s (%s)",
+                        file_path,
+                        i,
+                        str(e),
+                    )
+                continue
+
+            # Ensure a dict-like record (Singer expects object records)
+            if not isinstance(obj, dict):
+                if logger:
+                    logger.warning(
+                        "Skipping non-object JSON at %s:%s (type=%s)",
+                        file_path,
+                        i,
+                        type(obj).__name__,
+                    )
+                continue
+
+            yield obj, i
 
 
 # ---- file: tap_jsonl/streams.py
@@ -370,61 +395,185 @@ class JsonlStream(Stream):
 
 from __future__ import annotations
 
-from singer_sdk import typing as th  # JSON Schema typing helpers
+from datetime import datetime, timezone
+import os
+from pathlib import Path
 
-from tap_jsonl.client import JsonlStream
+from singer_sdk import typing as th
+from singer_sdk.streams import Stream
+from singer_sdk.helpers.types import Context
 
-# TODO: - Override `UsersStream` and `GroupsStream` with your own stream definition.
-#       - Copy-paste as many times as needed to create multiple stream types.
+import typing as t
 
+from tap_jsonl.client import iter_jsonl_file
 
-class UsersStream(JsonlStream):
-    """Define custom stream."""
-
-    name = "users"
-    primary_keys = ("id",)
-    replication_key = None
-    # Optionally, you may also use `schema_filepath` in place of `schema`:
-    # schema_filepath = SCHEMAS_DIR / "users.json"  # noqa: ERA001
-    schema = th.PropertiesList(
-        th.Property("name", th.StringType),
-        th.Property(
-            "id",
-            th.StringType,
-            description="The user's system ID",
-        ),
-        th.Property(
-            "age",
-            th.IntegerType,
-            description="The user's age in years",
-        ),
-        th.Property(
-            "email",
-            th.StringType,
-            description="The user's email address",
-        ),
-        th.Property("street", th.StringType),
-        th.Property("city", th.StringType),
-        th.Property(
-            "state",
-            th.StringType,
-            description="State name in ISO 3166-2 format",
-        ),
-        th.Property("zip", th.StringType),
-    ).to_dict()
+SDC_INCREMENTAL_KEY = "_sdc_last_modified"
+SDC_FILENAME = "_sdc_filename"
+SDC_STREAM = "_sdc_stream"
 
 
-class GroupsStream(JsonlStream):
-    """Define custom stream."""
+def to_iso8601(dt: datetime) -> str:
+    return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat()
 
-    name = "groups"
-    primary_keys = ("id",)
-    replication_key = "modified"
-    schema = th.PropertiesList(
-        th.Property("name", th.StringType),
-        th.Property("id", th.StringType),
-        th.Property("modified", th.DateTimeType),
-    ).to_dict()
+
+def parse_bookmark(val: str | None) -> datetime | None:
+    if not val:
+        return None
+    clean = val.replace("Z", "+00:00")
+    return datetime.fromisoformat(clean).astimezone(timezone.utc)
+
+
+class JsonlFileStream(Stream):
+    """A single logical stream backed by one-or-many JSONL files."""
+
+    def __init__(self, tap) -> None:
+        super().__init__(tap)
+
+        self.stream_name = self.config.get("stream_name") or "jsonl"
+        self.name = self.stream_name
+
+        super().__init__(tap, name=self.stream_name)
+
+        self.primary_keys = self.config.get("primary_keys") or []
+
+        self.state_partitioning_keys = [SDC_FILENAME, SDC_STREAM]
+        self.replication_key = SDC_INCREMENTAL_KEY
+        self.forced_replication_method = "INCREMENTAL"
+
+        self._encoding = self.config.get("encoding") or "utf-8"
+        self._emit_state_every = int(self.config.get("emit_state_every") or 500)
+
+    @property
+    def is_sorted(self) -> bool:
+        """The stream returns records in order."""
+        return False
+
+    @property
+    def schema(self) -> dict:
+        if self._schema:
+            return self._schema
+
+        props = []
+
+        # TODO: load the first file row and use as schema
+
+        props.append(
+            th.Property(
+                SDC_INCREMENTAL_KEY,
+                th.DateTimeType(nullable=True),
+                description="Replication checkpoint (file mtime or row date)",
+            )
+        )
+        props.append(
+            th.Property(
+                SDC_FILENAME,
+                th.StringType(nullable=True),
+                description="Filename reference",
+            ),
+        )
+        props.append(
+            th.Property(
+                SDC_STREAM,
+                th.StringType(nullable=True),
+                description="Stream (table_name) reference",
+            )
+        )
+
+        self._schema = th.PropertiesList(*props).to_dict()
+
+        return self._schema
+
+    def get_partition_name(self, filepath: str) -> str:
+        return str(Path(filepath).absolute())
+
+    def get_partition_context(self, filepath: str) -> dict[str, t.Any]:
+        """Return the one true partition context for this file."""
+        return {
+            SDC_FILENAME: self.get_partition_name(filepath),
+            SDC_STREAM: self.stream_name,
+        }
+
+    def get_files(self) -> t.List[Path]:
+
+        pattern = self.config.get("path")
+        if not pattern:
+            return []
+
+        expanded = os.path.expanduser(pattern)
+        # glob with ** support
+        paths = sorted(
+            Path().glob(expanded)
+            if not expanded.startswith("/")
+            else Path("/").glob(expanded[1:])
+        )
+
+        # Fallback for patterns that Path.glob might not like (Windows-ish or edge cases):
+        if not paths:
+            import glob as _glob
+
+            paths = [Path(p) for p in sorted(_glob.glob(expanded, recursive=True))]
+
+        return paths
+
+    def get_records(self, context: Context | None) -> t.Iterable[dict]:
+        """Yield records for all files matching this stream's glob."""
+        files = self.get_files()
+        if not files:
+            self.logger.warning("No files found for", self, self.config.get("path"))
+            yield from []
+
+        for filepath in sorted(files):
+            yield from self.process_file(str(filepath), context or {})
+
+    def process_file(
+        self,
+        filepath: str,
+        context: Context,
+    ) -> list[dict]:
+        """Process one file with state awareness and return its records."""
+
+        # load bookmark
+        last_bookmark = self.get_starting_replication_key_value(context)
+        bookmark_dt = parse_bookmark(last_bookmark)
+
+        # TODO get mtime from file
+        mtime: datetime = datetime.now()
+
+        self.logger.debug(
+            "Partition context: %s, last_bookmark=%s, mtime=%s",
+            context,
+            bookmark_dt,
+            mtime,
+        )
+
+        # skip if already processed
+        if bookmark_dt and mtime <= bookmark_dt:
+            self.logger.info(
+                "Skipping %s (mtime=%s <= bookmark=%s)", filepath, mtime, bookmark_dt
+            )
+            return []
+
+        records: list[dict] = []
+
+        for record, current_line in iter_jsonl_file(
+            file_path=filepath,
+            encoding=self._encoding,
+            logger=self.logger,
+        ):
+            record[SDC_INCREMENTAL_KEY] = to_iso8601(mtime)
+            record[SDC_FILENAME] = filepath
+            record[SDC_STREAM] = self.stream_name
+
+            records.append(record)
+
+        if records:
+            self.logger.info("Processed %d rows from %s", len(records), filepath)
+            self._increment_stream_state(
+                {SDC_INCREMENTAL_KEY: to_iso8601(mtime)},
+                context=context,
+            )
+
+        return records
 
 
 # ---- file: tap_jsonl/tap.py
@@ -437,8 +586,7 @@ import sys
 from singer_sdk import Tap
 from singer_sdk import typing as th  # JSON schema typing helpers
 
-# TODO: Import your custom stream types here:
-from tap_jsonl import streams
+from tap_jsonl.streams import JsonlFileStream
 
 if sys.version_info >= (3, 12):
     from typing import override
@@ -447,52 +595,61 @@ else:
 
 
 class TapJsonl(Tap):
-    """Singer tap for Jsonl."""
+    """Singer tap for JSONL files."""
 
     name = "tap-jsonl"
 
-    # TODO: Update this section with the actual config values you expect:
     config_jsonschema = th.PropertiesList(
         th.Property(
-            "auth_token",
+            "path",
             th.StringType(nullable=False),
             required=True,
-            secret=True,  # Flag config as protected.
-            title="Auth Token",
-            description="The token to authenticate against the API service",
+            title="Path Glob",
+            description="Glob pattern for JSONL files, e.g. /data/**/*.jsonl",
         ),
         th.Property(
-            "project_ids",
-            th.ArrayType(th.StringType(nullable=False), nullable=False),
-            required=True,
-            title="Project IDs",
-            description="Project IDs to replicate",
+            "stream_name",
+            th.StringType(nullable=True),
+            default="jsonl",
+            title="Stream Name",
+            description="Override the Singer stream name (default: jsonl).",
         ),
         th.Property(
-            "start_date",
-            th.DateTimeType(nullable=True),
-            description="The earliest record date to sync",
+            "primary_keys",
+            th.ArrayType(th.StringType(nullable=False), nullable=True),
+            default=[],
+            title="Primary Keys",
+            description=(
+                "Optional list of primary key fields for the stream. "
+                "Example: ['id'] or ['project_id','org_id']."
+            ),
         ),
         th.Property(
-            "api_url",
-            th.StringType(nullable=False),
-            title="API URL",
-            default="https://api.mysample.com",
-            description="The url for the API service",
+            "encoding",
+            th.StringType(nullable=True),
+            default="utf-8",
+            title="File Encoding",
+            description="File encoding used when reading JSONL files (default: utf-8).",
+        ),
+        th.Property(
+            "state_strategy",
+            th.StringType(nullable=True),
+            default="line",
+            title="State Strategy",
+            description="Currently only 'line' is supported (track last processed line per file).",
+        ),
+        th.Property(
+            "emit_state_every",
+            th.IntegerType(nullable=True),
+            default=500,
+            title="Emit State Every N Records",
+            description="How often to persist state while reading a file (default: 500).",
         ),
     ).to_dict()
 
     @override
-    def discover_streams(self) -> list[streams.JsonlStream]:
-        """Return a list of discovered streams.
-
-        Returns:
-            A list of discovered streams.
-        """
-        return [
-            streams.GroupsStream(self),
-            streams.UsersStream(self),
-        ]
+    def discover_streams(self) -> list[JsonlFileStream]:
+        return [JsonlFileStream(self)]
 
 
 if __name__ == "__main__":

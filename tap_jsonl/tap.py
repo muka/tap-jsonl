@@ -7,8 +7,7 @@ import sys
 from singer_sdk import Tap
 from singer_sdk import typing as th  # JSON schema typing helpers
 
-# TODO: Import your custom stream types here:
-from tap_jsonl import streams
+from tap_jsonl.streams import JsonlFileStream
 
 if sys.version_info >= (3, 12):
     from typing import override
@@ -17,52 +16,61 @@ else:
 
 
 class TapJsonl(Tap):
-    """Singer tap for Jsonl."""
+    """Singer tap for JSONL files."""
 
     name = "tap-jsonl"
 
-    # TODO: Update this section with the actual config values you expect:
     config_jsonschema = th.PropertiesList(
         th.Property(
-            "auth_token",
+            "path",
             th.StringType(nullable=False),
             required=True,
-            secret=True,  # Flag config as protected.
-            title="Auth Token",
-            description="The token to authenticate against the API service",
+            title="Path Glob",
+            description="Glob pattern for JSONL files, e.g. /data/**/*.jsonl",
         ),
         th.Property(
-            "project_ids",
-            th.ArrayType(th.StringType(nullable=False), nullable=False),
-            required=True,
-            title="Project IDs",
-            description="Project IDs to replicate",
+            "stream_name",
+            th.StringType(nullable=True),
+            default="jsonl",
+            title="Stream Name",
+            description="Override the Singer stream name (default: jsonl).",
         ),
         th.Property(
-            "start_date",
-            th.DateTimeType(nullable=True),
-            description="The earliest record date to sync",
+            "primary_keys",
+            th.ArrayType(th.StringType(nullable=False), nullable=True),
+            default=[],
+            title="Primary Keys",
+            description=(
+                "Optional list of primary key fields for the stream. "
+                "Example: ['id'] or ['project_id','org_id']."
+            ),
         ),
         th.Property(
-            "api_url",
-            th.StringType(nullable=False),
-            title="API URL",
-            default="https://api.mysample.com",
-            description="The url for the API service",
+            "encoding",
+            th.StringType(nullable=True),
+            default="utf-8",
+            title="File Encoding",
+            description="File encoding used when reading JSONL files (default: utf-8).",
+        ),
+        th.Property(
+            "state_strategy",
+            th.StringType(nullable=True),
+            default="line",
+            title="State Strategy",
+            description="Currently only 'line' is supported (track last processed line per file).",
+        ),
+        th.Property(
+            "emit_state_every",
+            th.IntegerType(nullable=True),
+            default=500,
+            title="Emit State Every N Records",
+            description="How often to persist state while reading a file (default: 500).",
         ),
     ).to_dict()
 
     @override
-    def discover_streams(self) -> list[streams.JsonlStream]:
-        """Return a list of discovered streams.
-
-        Returns:
-            A list of discovered streams.
-        """
-        return [
-            streams.GroupsStream(self),
-            streams.UsersStream(self),
-        ]
+    def discover_streams(self) -> list[JsonlFileStream]:
+        return [JsonlFileStream(self)]
 
 
 if __name__ == "__main__":

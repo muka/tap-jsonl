@@ -1,0 +1,5 @@
+{ "id": "foo5", "value": true, "count": 100 }
+{ "id": "foo6", "value": false, "count": 200 }
+{ "id": "foo7", "value": true, "count": 300 }
+{ "id": "foo1", "value": false, "count": 400 }
+{ "id": "foo2", "value": false, "count": 400 }

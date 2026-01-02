@@ -1,6 +1,6 @@
 # tap-jsonl
 
-`tap-jsonl` is a Singer tap for Jsonl.
+`tap-jsonl` is a Singer tap for generic JSONL extractions.
 
 Built with the [Meltano Tap SDK](https://sdk.meltano.com) for Singer Taps.
 
