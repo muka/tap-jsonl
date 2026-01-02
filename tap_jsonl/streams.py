@@ -189,7 +189,8 @@ class JsonlFileStream(Stream):
             yield from []
 
         for filepath in sorted(files):
-            yield from self.process_file(str(filepath), context or {})
+            file_ctx = self.get_partition_context(str(filepath))
+            yield from self.process_file(str(filepath), file_ctx)
 
     def process_file(
         self,
@@ -199,8 +200,8 @@ class JsonlFileStream(Stream):
         """Process one file with state awareness and return its records."""
 
         # load bookmark
-        last_bookmark = self.get_starting_replication_key_value(context)
-        bookmark_dt = parse_bookmark(last_bookmark)
+        pstate = self.get_context_state(context) or {}
+        bookmark_dt = parse_bookmark(pstate.get(SDC_INCREMENTAL_KEY))
 
         mtime: datetime = datetime.fromtimestamp(
             Path(filepath).stat().st_mtime, tz=timezone.utc

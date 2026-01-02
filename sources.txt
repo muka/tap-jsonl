@@ -5,11 +5,11 @@
 # remote_url: git@github.com-muka:muka/tap-jsonl.git
 # remote_name: origin
 # branch: detached
-# commit: bfa7634abed060f84d5d9020c8d496267e0f79c1
-# commit_time: 2026-01-02T17:45:18+01:00
+# commit: f2f247362fdb170ddbf137b1ddf97c08c1f15c56
+# commit_time: 2026-01-02T18:55:35+01:00
 # author: muka <luca.capra@gmail.com>
-# message: Merge branch 'main' of github.com-muka:muka/tap-jsonl
-# dirty: yes
+# message: fix: py3.10 support
+# dirty: no
 
 
 # ---- file: README.md
@@ -52,6 +52,21 @@ This section can be created by copy-pasting the CLI output from:
 tap-jsonl --about --format=markdown
 ```
 -->
+
+Example config
+
+```yaml
+
+      config:
+        path: ./data/**/*.jsonl
+        stream_name: my_stream
+        primary_keys: ["id"]
+        encoding: utf-8
+        emit_state_every: 500
+
+
+```
+
 
 A full list of supported settings and capabilities for this
 tap is available by running:
@@ -173,7 +188,7 @@ plugins:
         - name: emit_state_every
 
       config:
-        path: /data/**/*.jsonl
+        path: ./data/**/*.jsonl
         stream_name: my_stream
         primary_keys: ["id"]
         encoding: utf-8
@@ -227,6 +242,7 @@ tap-jsonl = 'tap_jsonl.tap:TapJsonl.cli'
 [dependency-groups]
 dev = [
     { include-group = "test" },
+    "python-semantic-release>=9.21.1",
 ]
 test = [
     "pytest>=9",
@@ -303,6 +319,23 @@ commands = [
     [ "ty", "check", { replace = "posargs", default = [ "tap_jsonl", "tests" ], extend = true } ],
 ]
 
+
+[tool.semantic_release]
+version_toml = ["pyproject.toml:project.version"]
+update_pyproject_toml = true 
+commit_parser = "conventional"
+
+build_command = """
+    uv lock  --upgrade-package "$PACKAGE_NAME"
+    git add uv.lock
+    uv build
+"""
+
+[tool.semantic_release.commit_parser_options]
+minor_tags = ["feat"]
+patch_tags = ["fix", "perf"]
+parse_squash_commits = true
+ignore_merge_commits = true
 
 # ---- file: tap_jsonl/__init__.py
 """Tap for Jsonl."""
@@ -397,9 +430,10 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 import os
+import re
 from pathlib import Path
 
-from singer_sdk import typing as th
+from singer_sdk import Tap, typing as th
 from singer_sdk.streams import Stream
 from singer_sdk.helpers.types import Context
 
@@ -410,6 +444,19 @@ from tap_jsonl.client import iter_jsonl_file
 SDC_INCREMENTAL_KEY = "_sdc_last_modified"
 SDC_FILENAME = "_sdc_filename"
 SDC_STREAM = "_sdc_stream"
+
+ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+ISO_DT_RE = re.compile(
+    r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})?$"
+)
+
+
+def _looks_like_date(s: str) -> bool:
+    return bool(ISO_DATE_RE.match(s))
+
+
+def _looks_like_datetime(s: str) -> bool:
+    return bool(ISO_DT_RE.match(s))
 
 
 def to_iso8601(dt: datetime) -> str:
@@ -426,11 +473,9 @@ def parse_bookmark(val: str | None) -> datetime | None:
 class JsonlFileStream(Stream):
     """A single logical stream backed by one-or-many JSONL files."""
 
-    def __init__(self, tap) -> None:
-        super().__init__(tap)
+    def __init__(self, tap: Tap) -> None:
 
-        self.stream_name = self.config.get("stream_name") or "jsonl"
-        self.name = self.stream_name
+        self.stream_name = tap.config.get("stream_name") or "jsonl"
 
         super().__init__(tap, name=self.stream_name)
 
@@ -440,6 +485,7 @@ class JsonlFileStream(Stream):
         self.replication_key = SDC_INCREMENTAL_KEY
         self.forced_replication_method = "INCREMENTAL"
 
+        self.file_path = self.config.get("path")
         self._encoding = self.config.get("encoding") or "utf-8"
         self._emit_state_every = int(self.config.get("emit_state_every") or 500)
 
@@ -448,6 +494,39 @@ class JsonlFileStream(Stream):
         """The stream returns records in order."""
         return False
 
+    def _infer_schema(self, v: t.Any) -> th.JSONTypeHelper:
+        if isinstance(v, bool):
+            return th.BooleanType(nullable=True)
+        if isinstance(v, int) and not isinstance(v, bool):
+            return th.IntegerType(nullable=True)
+        if isinstance(v, float):
+            return th.NumberType(nullable=True)
+        if isinstance(v, str) and _looks_like_datetime(v):
+            return th.DateTimeType(nullable=True)
+        if isinstance(v, str) and _looks_like_date(v):
+            return th.DateType(nullable=True)
+        if isinstance(v, str):
+            return th.StringType(nullable=True)
+
+        if isinstance(v, dict):
+            return th.ObjectType(
+                *[th.Property(k, self._infer_schema(vv)) for k, vv in v.items()],
+                additional_properties=True,
+                nullable=True,
+            )
+
+        if isinstance(v, list):
+            # infer array item type from first non-null element
+            first = next((x for x in v if x is not None), None)
+            item = (
+                self._infer_schema(first)
+                if first is not None
+                else th.StringType(nullable=True)
+            )
+            return th.ArrayType(item, nullable=True)
+
+        return th.StringType(nullable=True)
+
     @property
     def schema(self) -> dict:
         if self._schema:
@@ -455,7 +534,20 @@ class JsonlFileStream(Stream):
 
         props = []
 
-        # TODO: load the first file row and use as schema
+        files = self.get_files()
+        sample: dict[str, t.Any] | None = None
+        for p in files:
+            for rec, _ in iter_jsonl_file(
+                file_path=str(p), encoding=self._encoding, logger=self.logger
+            ):
+                sample = rec
+                break
+            if sample:
+                break
+
+        if sample:
+            for k, v in sample.items():
+                props.append(th.Property(k, self._infer_schema(v)))
 
         props.append(
             th.Property(
@@ -519,7 +611,7 @@ class JsonlFileStream(Stream):
         """Yield records for all files matching this stream's glob."""
         files = self.get_files()
         if not files:
-            self.logger.warning("No files found for", self, self.config.get("path"))
+            self.logger.warning(f"No files found for {self.file_path}")
             yield from []
 
         for filepath in sorted(files):
@@ -536,10 +628,11 @@ class JsonlFileStream(Stream):
         last_bookmark = self.get_starting_replication_key_value(context)
         bookmark_dt = parse_bookmark(last_bookmark)
 
-        # TODO get mtime from file
-        mtime: datetime = datetime.now()
+        mtime: datetime = datetime.fromtimestamp(
+            Path(filepath).stat().st_mtime, tz=timezone.utc
+        ).replace(microsecond=0)
 
-        self.logger.debug(
+        self.logger.info(
             "Partition context: %s, last_bookmark=%s, mtime=%s",
             context,
             bookmark_dt,
