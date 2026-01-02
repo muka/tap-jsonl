@@ -1,0 +1,16 @@
+version: "3"
+
+tasks:
+  run:
+    cmds:
+      - uv run meltano run tap-jsonl target-jsonl {{.CLI_ARGS}}
+
+  run:refresh:
+    cmds:
+      - task run -- --full-refresh
+
+  release:
+    cmds:
+      - uv run semantic-release -v version --no-vcs-release
+      - git push
+      - git push --tags

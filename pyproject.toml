@@ -38,6 +38,7 @@ tap-jsonl = 'tap_jsonl.tap:TapJsonl.cli'
 [dependency-groups]
 dev = [
     { include-group = "test" },
+    "python-semantic-release>=9.21.1",
 ]
 test = [
     "pytest>=9",
