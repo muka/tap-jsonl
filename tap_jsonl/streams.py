@@ -59,6 +59,7 @@ class JsonlFileStream(Stream):
         self.replication_key = SDC_INCREMENTAL_KEY
         self.forced_replication_method = "INCREMENTAL"
 
+        self.file_path = self.config.get("path")
         self._encoding = self.config.get("encoding") or "utf-8"
         self._emit_state_every = int(self.config.get("emit_state_every") or 500)
 
@@ -184,7 +185,7 @@ class JsonlFileStream(Stream):
         """Yield records for all files matching this stream's glob."""
         files = self.get_files()
         if not files:
-            self.logger.warning(f"No files found for {self.config.get("path")}")
+            self.logger.warning(f"No files found for {self.file_path}")
             yield from []
 
         for filepath in sorted(files):
