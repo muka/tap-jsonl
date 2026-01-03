@@ -1,6 +1,19 @@
 # CHANGELOG
 
 
+## v0.2.0 (2026-01-03)
+
+### Chores
+
+- Bump uv lock
+  ([`07a57ad`](https://github.com/muka/tap-jsonl/commit/07a57ad4f9761c685d562adf72d03f48fe947ce6))
+
+### Features
+
+- Improve samples lookup
+  ([`201f655`](https://github.com/muka/tap-jsonl/commit/201f655ac67844848d5484ac64c6b68babace63f))
+
+
 ## v0.1.1 (2026-01-02)
 
 ### Bug Fixes
