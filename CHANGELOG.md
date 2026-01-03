@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.2.2 (2026-01-03)
+
+### Bug Fixes
+
+- Build
+  ([`4260e9e`](https://github.com/muka/tap-jsonl/commit/4260e9eb7e4457dc2730ee5dec979416f4773989))
+
+
 ## v0.2.1 (2026-01-03)
 
 ### Bug Fixes
