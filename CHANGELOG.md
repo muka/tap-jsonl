@@ -1,6 +1,34 @@
 # CHANGELOG
 
 
+## v0.2.3 (2026-01-03)
+
+### Bug Fixes
+
+- Expose props
+  ([`46327cc`](https://github.com/muka/tap-jsonl/commit/46327cc0c7c93bad78f3a758c05f6188a4d4e110))
+
+### Chores
+
+- Fix tests
+  ([`e7d6ac5`](https://github.com/muka/tap-jsonl/commit/e7d6ac5e27b26429e5c9a159f1fbf75c32b226f9))
+
+- **deps**: Bump s3fs from 2025.10.0 to 2025.12.0
+  ([`84a2773`](https://github.com/muka/tap-jsonl/commit/84a2773ffba2ba00785c74c1802e31dc5a4b77c1))
+
+Bumps [s3fs](https://github.com/fsspec/s3fs) from 2025.10.0 to 2025.12.0. -
+  [Changelog](https://github.com/fsspec/s3fs/blob/main/release-procedure.md) -
+  [Commits](https://github.com/fsspec/s3fs/compare/2025.10.0...2025.12.0)
+
+--- updated-dependencies: - dependency-name: s3fs dependency-version: 2025.12.0
+
+dependency-type: direct:production
+
+update-type: version-update:semver-minor ...
+
+Signed-off-by: dependabot[bot] <support@github.com>
+
+
 ## v0.2.2 (2026-01-03)
 
 ### Bug Fixes
