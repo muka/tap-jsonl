@@ -1,4 +1,4 @@
-{ "id": "foo1", "value": true, "count": 100 }
+{ "id": "foo1", "value": "string!", "count": false }
 { "id": "foo2", "value": false, "count": 200 }
 { "id": "foo3", "value": true, "count": 300 }
 { "id": "foo4", "value": false, "count": 400 }

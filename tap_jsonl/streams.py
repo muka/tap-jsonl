@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import datetime, timezone
+from math import floor
 import os
 import re
 from pathlib import Path
@@ -101,6 +103,41 @@ class JsonlFileStream(Stream):
 
         return th.StringType(nullable=True)
 
+    def _kind(self, v: t.Any) -> tuple[str, str | None]:
+        if v is None:
+            return ("null", None)
+        if v == []:
+            return ("null", None)  # treat empty list as null (optional)
+        if isinstance(v, bool):
+            return ("boolean", None)
+        if isinstance(v, int) and not isinstance(v, bool):
+            return ("integer", None)
+        if isinstance(v, float):
+            return ("number", None)
+        if isinstance(v, str) and ISO_DT_RE.match(v):
+            return ("string", "date-time")
+        if isinstance(v, str) and ISO_DATE_RE.match(v):
+            return ("string", "date")
+        if isinstance(v, str):
+            return ("string", None)
+        if isinstance(v, dict):
+            return ("object", None)
+        if isinstance(v, list):
+            return ("array", None)
+        return ("string", None)
+
+    def _schema_for_kinds(self, kinds: set[tuple[str, str | None]]) -> dict:
+        types = sorted({t for t, _ in kinds})
+        fmts = {fmt for _, fmt in kinds if fmt}
+
+        # If any non-string appears, we can't keep date/date-time format strict
+        non_string = any(t != "string" for t in types if t != "null")
+        if fmts and not non_string and len(fmts) == 1:
+            fmt = next(iter(fmts))
+            return {"type": types, "format": fmt}
+
+        return {"type": types}
+
     @property
     def schema(self) -> dict:
         if self._schema:
@@ -108,20 +145,31 @@ class JsonlFileStream(Stream):
 
         props = []
 
-        files = self.get_files()
-        sample: dict[str, t.Any] | None = None
-        for p in files:
+        MAX_SAMPLES = int(self.config.get("schema_sample_records") or 200)
+        MAX_FILES = int(self.config.get("schema_sample_files") or 20)
+        samples_per_file = floor(MAX_SAMPLES / MAX_FILES)
+
+        samples: list[dict[str, t.Any]] = []
+        for p in self.get_files()[:MAX_FILES]:
             for rec, _ in iter_jsonl_file(
                 file_path=str(p), encoding=self._encoding, logger=self.logger
             ):
-                sample = rec
-                break
-            if sample:
+                samples.append(rec)
+                if len(samples) >= samples_per_file:
+                    break
+
+            if len(samples) >= MAX_SAMPLES:
                 break
 
-        if sample:
-            for k, v in sample.items():
-                props.append(th.Property(k, self._infer_schema(v)))
+        observed: dict[str, set[tuple[str, str | None]]] = defaultdict(set)
+        for rec in samples:
+            for k, v in rec.items():
+                observed[k].add(self._kind(v))
+
+        for field, kinds in observed.items():
+            props.append(
+                th.Property(field, th.CustomType(self._schema_for_kinds(kinds)))
+            )
 
         props.append(
             th.Property(
