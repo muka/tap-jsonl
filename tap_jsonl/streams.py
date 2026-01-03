@@ -27,14 +27,6 @@ ISO_DT_RE = re.compile(
 )
 
 
-def _looks_like_date(s: str) -> bool:
-    return bool(ISO_DATE_RE.match(s))
-
-
-def _looks_like_datetime(s: str) -> bool:
-    return bool(ISO_DT_RE.match(s))
-
-
 def to_iso8601(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -72,37 +64,58 @@ class JsonlFileStream(Stream):
     def _kind(self, v: t.Any) -> tuple[str, str | None]:
         if v is None:
             return ("null", None)
-        if v == []:
-            return ("null", None)  # treat empty list as null (optional)
-        if isinstance(v, bool):
-            return ("boolean", None)
-        if isinstance(v, int) and not isinstance(v, bool):
-            return ("integer", None)
-        if isinstance(v, float):
-            return ("number", None)
-        if isinstance(v, str) and ISO_DT_RE.match(v):
-            return ("string", "date-time")
-        if isinstance(v, str) and ISO_DATE_RE.match(v):
-            return ("string", "date")
-        if isinstance(v, str):
-            return ("string", None)
-        if isinstance(v, dict):
-            return ("object", None)
+
+        # NOTE: empty list is still an array, and could contain anything
         if isinstance(v, list):
             return ("array", None)
+
+        if isinstance(v, dict):
+            return ("object", None)
+
+        if isinstance(v, bool):
+            return ("boolean", None)
+
+        if isinstance(v, int) and not isinstance(v, bool):
+            return ("integer", None)
+
+        if isinstance(v, float):
+            return ("number", None)
+
+        if isinstance(v, str) and ISO_DT_RE.match(v):
+            return ("string", "date-time")
+
+        if isinstance(v, str) and ISO_DATE_RE.match(v):
+            return ("string", "date")
+
+        if isinstance(v, str):
+            return ("string", None)
+
         return ("string", None)
 
     def _schema_for_kinds(self, kinds: set[tuple[str, str | None]]) -> dict:
-        types = sorted({t for t, _ in kinds})
-        fmts = {fmt for _, fmt in kinds if fmt}
+        # Always nullable
+        types = {t for t, _ in kinds}
+        types.add("null")
 
-        # If any non-string appears, we can't keep date/date-time format strict
-        non_string = any(t != "string" for t in types if t != "null")
+        # arrays: unconstrained items
+        if "array" in types:
+            # keep any other observed scalar types too (some rows array, others scalar)
+            out: dict = {"type": sorted(types)}
+            out["items"] = {}  # unconstrained
+            return out
+
+        # objects: allow any inner field
+        if "object" in types:
+            out = {"type": sorted(types), "additionalProperties": True}
+            return out
+
+        # strings: optionally keep date/date-time format ONLY if the field is purely string-ish
+        fmts = {fmt for t, fmt in kinds if t == "string" and fmt}
+        non_string = any(t not in ("string", "null") for t in types)
         if fmts and not non_string and len(fmts) == 1:
-            fmt = next(iter(fmts))
-            return {"type": types, "format": fmt}
+            return {"type": sorted(types), "format": next(iter(fmts))}
 
-        return {"type": types}
+        return {"type": sorted(types)}
 
     @property
     def schema(self) -> dict:

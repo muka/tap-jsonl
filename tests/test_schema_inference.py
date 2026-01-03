@@ -19,7 +19,7 @@ def test_schema_infers_types(make_jsonl, tap_factory):
 
     assert schema["id"]["type"] == ["integer", "null"]
     assert schema["flag"]["type"] == ["boolean", "null"]
-    assert schema["amount"]["type"] == ["number", "null"]
+    assert schema["amount"]["type"] == ["null", "number"]
     assert schema["day"]["format"] == "date"
     assert schema["ts"]["format"] == "date-time"
-    assert schema["meta"]["type"] == ["object", "null"]
+    assert schema["meta"]["type"] == ["null", "object"]
