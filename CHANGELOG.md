@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.2.1 (2026-01-03)
+
+### Bug Fixes
+
+- Semvver up
+  ([`6da4c84`](https://github.com/muka/tap-jsonl/commit/6da4c84651145e4ce2e46e1f4316a0e2cdbb7116))
+
+
 ## v0.2.0 (2026-01-03)
 
 ### Chores
