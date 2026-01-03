@@ -124,17 +124,27 @@ class JsonlFileStream(Stream):
 
         props = []
 
+        files = self.get_files()
+
         MAX_SAMPLES = int(self.config.get("schema_sample_records") or 1000)
         MAX_FILES = int(self.config.get("schema_sample_files") or 100)
-        samples_per_file = floor(MAX_SAMPLES / MAX_FILES)
+        if len(files) < MAX_FILES:
+            MAX_FILES = len(files)
+
+        samples_per_file = max(1, floor(MAX_SAMPLES / max(1, MAX_FILES)))
 
         samples: list[dict[str, t.Any]] = []
-        for p in self.get_files()[:MAX_FILES]:
+        for p in files[:MAX_FILES]:
+            taken_this_file = 0
             for rec, _ in iter_jsonl_file(
                 file_path=str(p), encoding=self._encoding, logger=self.logger
             ):
                 samples.append(rec)
-                if len(samples) >= samples_per_file:
+                taken_this_file += 1
+
+                if taken_this_file >= samples_per_file:
+                    break
+                if len(samples) >= MAX_SAMPLES:
                     break
 
             if len(samples) >= MAX_SAMPLES:
@@ -144,6 +154,10 @@ class JsonlFileStream(Stream):
         for rec in samples:
             for k, v in rec.items():
                 observed[k].add(self._kind(v))
+
+        self.logger.info(
+            "sampled_records=%d observed_fields=%d", len(samples), len(observed)
+        )
 
         for field, kinds in observed.items():
             props.append(
