@@ -119,6 +119,11 @@ commands = [
 version_toml = ["pyproject.toml:project.version"]
 
 build_command = """
+    PACKAGE_NAME=$(python - <<'EOF'
+import tomllib
+print(tomllib.load(open("pyproject.toml","rb"))["project"]["name"])
+EOF
+)
     uv lock --upgrade-package "$PACKAGE_NAME"
     git add uv.lock
     uv build
