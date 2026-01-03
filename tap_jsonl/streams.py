@@ -63,45 +63,11 @@ class JsonlFileStream(Stream):
 
         self.file_path = self.config.get("path")
         self._encoding = self.config.get("encoding") or "utf-8"
-        self._emit_state_every = int(self.config.get("emit_state_every") or 500)
 
     @property
     def is_sorted(self) -> bool:
         """The stream returns records in order."""
         return False
-
-    def _infer_schema(self, v: t.Any) -> th.JSONTypeHelper:
-        if isinstance(v, bool):
-            return th.BooleanType(nullable=True)
-        if isinstance(v, int) and not isinstance(v, bool):
-            return th.IntegerType(nullable=True)
-        if isinstance(v, float):
-            return th.NumberType(nullable=True)
-        if isinstance(v, str) and _looks_like_datetime(v):
-            return th.DateTimeType(nullable=True)
-        if isinstance(v, str) and _looks_like_date(v):
-            return th.DateType(nullable=True)
-        if isinstance(v, str):
-            return th.StringType(nullable=True)
-
-        if isinstance(v, dict):
-            return th.ObjectType(
-                *[th.Property(k, self._infer_schema(vv)) for k, vv in v.items()],
-                additional_properties=True,
-                nullable=True,
-            )
-
-        if isinstance(v, list):
-            # infer array item type from first non-null element
-            first = next((x for x in v if x is not None), None)
-            item = (
-                self._infer_schema(first)
-                if first is not None
-                else th.StringType(nullable=True)
-            )
-            return th.ArrayType(item, nullable=True)
-
-        return th.StringType(nullable=True)
 
     def _kind(self, v: t.Any) -> tuple[str, str | None]:
         if v is None:
@@ -145,8 +111,8 @@ class JsonlFileStream(Stream):
 
         props = []
 
-        MAX_SAMPLES = int(self.config.get("schema_sample_records") or 200)
-        MAX_FILES = int(self.config.get("schema_sample_files") or 20)
+        MAX_SAMPLES = int(self.config.get("schema_sample_records") or 1000)
+        MAX_FILES = int(self.config.get("schema_sample_files") or 100)
         samples_per_file = floor(MAX_SAMPLES / MAX_FILES)
 
         samples: list[dict[str, t.Any]] = []

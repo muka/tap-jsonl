@@ -47,7 +47,8 @@ Example config
         stream_name: my_stream
         primary_keys: ["id"]
         encoding: utf-8
-        emit_state_every: 500
+        schema_sample_records: 1000
+        schema_sample_files: 100
 
 
 ```

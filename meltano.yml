@@ -22,16 +22,16 @@ plugins:
         - name: stream_name
         - name: primary_keys
         - name: encoding
-        - name: state_strategy
-        - name: emit_state_every
+        - name: schema_sample_records
+        - name: schema_sample_files
 
       config:
         path: ./data/**/*.jsonl
         stream_name: my_stream
         primary_keys: ["id"]
         encoding: utf-8
-        state_strategy: line
-        emit_state_every: 500
+        schema_sample_records: 1000
+        schema_sample_files: 100
 
   loaders:
     - name: target-jsonl
