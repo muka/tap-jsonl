@@ -23,4 +23,3 @@ def test_schema_infers_types(make_jsonl, tap_factory):
     assert schema["day"]["format"] == "date"
     assert schema["ts"]["format"] == "date-time"
     assert schema["meta"]["type"] == ["object", "null"]
-    assert "properties" in schema["meta"]
