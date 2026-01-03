@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.3.0 (2026-01-03)
+
+### Features
+
+- Simplify schema
+  ([`0b310e3`](https://github.com/muka/tap-jsonl/commit/0b310e3bc518ebe75467da3e026092ef2e202f4d))
+
+
 ## v0.2.3 (2026-01-03)
 
 ### Bug Fixes
