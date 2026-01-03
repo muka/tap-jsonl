@@ -1,6 +1,14 @@
 # CHANGELOG
 
 
+## v0.3.1 (2026-01-03)
+
+### Bug Fixes
+
+- Correct sampling
+  ([`384408a`](https://github.com/muka/tap-jsonl/commit/384408a827f2760e33ffe4a15ad03e1af63426ec))
+
+
 ## v0.3.0 (2026-01-03)
 
 ### Features
